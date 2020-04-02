@@ -52,6 +52,7 @@ prepare() {
   git apply ../0002-arm64-dts-rockchip-disable-pwm0-on-rk3399-firefly.patch
   git apply ../0003-arm64-dts-rockchip-add-usb3-controller-node-for-RK33.patch
   git apply ../0004-arm64-dts-rockchip-enable-usb3-nodes-on-rk3328-rock6.patch
+  git apply ../0005-RK808-use-syscore-for-poweroff.patch
 
   cat "${srcdir}/config" > ./.config
 
