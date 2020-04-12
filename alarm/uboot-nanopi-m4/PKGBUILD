@@ -1,0 +1,71 @@
+# U-Boot: NanoPi M4
+# Maintainer: Ruben Van Boxem <vanboxem.ruben@gmail.com>
+
+buildarch=8
+
+pkgname=uboot-nanopi-m4
+pkgver=2020.01
+pkgrel=1
+pkgdesc="U-Boot for FriendlyARM's NanoPi M4 board"
+arch=('aarch64')
+url='http://www.denx.de/wiki/U-Boot/WebHome'
+license=('GPL')
+backup=('boot/boot.txt' 'boot/boot.scr')
+makedepends=('bc' 'git' 'dtc')
+install=${pkgname}.install
+# branch stable-4.4-rk3399-linux
+_commit_rkbin=29aa415b4f4887c16c427b4af9db88b60a17a207
+_atf_version=2.2
+source=("ftp://ftp.denx.de/pub/u-boot/u-boot-${pkgver/rc/-rc}.tar.bz2"
+        "git+https://github.com/rockchip-linux/rkbin.git#commit=$_commit_rkbin"
+        #"https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git/snapshot/trusted-firmware-a-${_atf_version}.tar.gz"
+        'boot.txt'
+        'mkscr'
+        'trust.ini'
+        '0001-always-init-rkclk.patch')
+sha512sums=('073d4e0234095c1bda1ffa7a648972aa4530d106ee1a73035e0501b1aba2951653582c8b7bcf338d4e95012fa67e75f97b7e1fbac5cc764d609b671ef29617f7'
+            'SKIP'
+            #'6e9292e56b160df35331b391202fc7ec41e50506585a00ce7ab3de7ff7d6d221227557423f9d560ff0c994b438989020d4fbd5b97bfe02343e5fe761bbb979a7'
+            'be799609c750c064cf60a933a3c7e5658b69e6cf778ce88ecff7654b00c452db961ae99824ef21721888cac93074cd760781b4ddb8e243e9a7f4e18c69ecfa6d'
+            '7046ab4d88efbba636be049be2f660e18c05e48d161d39437c1580b12795ba4d9197ad57ac4572398f80a38d4777507b57228abf4cc41f0081d196ece27ea9d0'
+            '841efb92425ad1f4be2aa3f8e29d42e137c5878e4c8528c7655d8cb39e0a5b686b889177c9630a4512ab3d58e57eee5adc1b86575a65ed5d214b4fd0028e26a0'
+            'da7657714479c48328b16ea31cbaf45cdadce5092a5fd861f6dee811df9a1cf93a4e2f05b7ebad67330bddb513ab2f3eb0d71dc23571be6a3e1ca085e914df59')
+
+prepare() {
+  cd ${srcdir}/u-boot-${pkgver/rc/-rc}
+  
+  patch -p1 -i ${srcdir}/0001-always-init-rkclk.patch
+}
+
+build() {
+  cd ${srcdir}/u-boot-${pkgver/rc/-rc}
+
+  unset CLFAGS CXXFLAGS CPPFLAGS LDFLAGS
+  
+  #cd ${srcdir}/trusted-firmware-a-${_atf_version}/
+  #make PLAT=rk3399 bl31
+  #export BL31=${srcdir}/build/rk3399/release/bl31/bl31.elf
+
+  make nanopi-m4-rk3399_defconfig
+  sed -i 's/CONFIG_IDENT_STRING=""/CONFIG_IDENT_STRING=" Arch Linux ARM"/g' .config
+  make EXTRAVERSION=-${pkgrel}
+}
+
+package() {
+  cd ${srcdir}/u-boot-${pkgver/rc/-rc}
+
+  mkdir -p "${pkgdir}/boot"
+
+  tools/mkimage -n rk3399 -T rksd -d ../rkbin/bin/rk33/rk3399_ddr_800MHz_v1.24.bin "${pkgdir}/boot/idbloader.img"
+  cat ../rkbin/bin/rk33/rk3399_miniloader_v1.19.bin >> "${pkgdir}/boot/idbloader.img"
+
+  loaderimage --pack --uboot u-boot-dtb.bin "${pkgdir}/boot/uboot.img" 0x200000
+
+  trust_merger ../trust.ini
+  #trust_merger --replace ${srcdir}/build/rk3399/release/bl31/bl31.elf ../rkbin/bin/rk33/rk3399_bl31_v1.30.elf trust.ini
+
+  cp u-boot-dtb.bin trust.img "${pkgdir}/boot"
+
+  tools/mkimage -A arm -O linux -T script -C none -n "U-Boot boot script" -d ../boot.txt "${pkgdir}/boot/boot.scr"
+  cp ../{boot.txt,mkscr} "${pkgdir}"/boot
+}
