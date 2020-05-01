@@ -7,8 +7,8 @@ pkgbase=linux-aarch64
 _srcname=linux-5.6
 _kernelname=${pkgbase#linux}
 _desc="AArch64 multi-platform"
-pkgver=5.6.2
-pkgrel=1
+pkgver=5.6.7
+pkgrel=2
 arch=('aarch64')
 url="http://www.kernel.org/"
 license=('GPL2')
@@ -21,12 +21,15 @@ source=("http://www.kernel.org/pub/linux/kernel/v5.x/${_srcname}.tar.xz"
         '0003-arm64-dts-rockchip-add-usb3-controller-node-for-RK33.patch'
         '0004-arm64-dts-rockchip-enable-usb3-nodes-on-rk3328-rock6.patch'
         '0005-RK808-use-syscore-for-poweroff.patch'
-        '0011-uapi-h264-add-dpb-entry-field-reference-flags.patch'
+	'0009-hantro-set-of-small-cleanups-and-fixes.patch'
+        '0010-media-rename-VFL__TYPE_GRABBER-to-_VIDEO.patch'
+	'0011-uapi-h264-add-dpb-entry-field-reference-flags.patch'
         '0012-media-v4l2-core-add-helpers-to-build-the-h264-p-bo-b1-reflists.patch'
         '0013-media-hantro-h264-use-the-generic-h264-reflist-builder.patch'
         '0014-media-dt-bindings-rockchip-document-rk3399-video-decoder-bindings.patch'
         '0015-media-rkvdec-add-the-rkvdec-driver.patch'
         '0016-arm64-dts-rockchip-rk3399-define-the-rockchip-video-decoder-node.patch'
+	'0020-media-rkvdec-add-a-vp9-backend.patch'
         'config'
         'kernel.its'
         'kernel.keyblock'
@@ -35,18 +38,21 @@ source=("http://www.kernel.org/pub/linux/kernel/v5.x/${_srcname}.tar.xz"
         '60-linux.hook'
         '90-linux.hook')
 md5sums=('7b9199ec5fa563ece9ed585ffb17798f'
-         '07be77524655091203e24eed91b951c7'
+         '678aa572e5a8f21bcf3519698ee02a47'
          '8f50ae936659ff174e292e1164d279c1'
          'e85e2b7aa3bc42d7dd6b36c325d29e3f'
          '2c36fb143c27ed46f498c4d4633ea0c6'
          '2e3fe5b9053d6a2c5327113836409d13'
          '128986df293e0b2b8591971e1dfe9f94'
+         '6ae05b11c56dd08eb9949f588fdb3820'
+         '0193c8a96e85cea930f6f8cad86a0fde'
          '6b3a1c7b4b6a7b9681bd8a88375c97dc'
          '7b7bb019b02c61592efd6b86a5eee572'
          'a3faf9097e80407ee68e9ec9f85562f0'
          '4d79b7cf2d1eff2a10e6d178719acf8f'
          '141d92c148f63a1bede277c0b63f68e9'
          '764842ce3889a16df105ffe1db7ec8e2'
+         '5026f80ac38623e925f7cb4f00e6100b'
          'efc55ef70a2f14562119e9a98991a347'
          '7f1a96e24f5150f790df94398e9525a3'
          '61c5ff73c136ed07a7aadbf58db3d96a'
@@ -66,6 +72,9 @@ prepare() {
   patch -p1 -i ../0003-arm64-dts-rockchip-add-usb3-controller-node-for-RK33.patch
   patch -p1 -i ../0004-arm64-dts-rockchip-enable-usb3-nodes-on-rk3328-rock6.patch
   patch -p1 -i ../0005-RK808-use-syscore-for-poweroff.patch
+
+  patch -p1 -i ../0009-hantro-set-of-small-cleanups-and-fixes.patch
+  patch -p1 -i ../0010-media-rename-VFL__TYPE_GRABBER-to-_VIDEO.patch
   # H264 hardware decoding for rk3399
   # First patch from previous series: https://lkml.org/lkml/2020/2/20/667
   # Rest of the patches from: https://lwn.net/ml/linux-kernel/20200330014616.10621-1-ezequiel@collabora.com/
@@ -76,6 +85,7 @@ prepare() {
   # Following patch has Andriy Gelman kfree commented fix applied
   patch -p1 -i ../0015-media-rkvdec-add-the-rkvdec-driver.patch
   patch -p1 -i ../0016-arm64-dts-rockchip-rk3399-define-the-rockchip-video-decoder-node.patch
+  patch -p1 -i ../0020-media-rkvdec-add-a-vp9-backend.patch
 
   cat "${srcdir}/config" > ./.config
 
@@ -246,34 +256,19 @@ _package-headers() {
   done < <(find "${_builddir}/scripts" -type f -perm -u+w -print0 2>/dev/null)
 }
 
-_package-chromebook() {
-  pkgdesc="The Linux Kernel - ${_desc} - Chromebooks"
-  depends=('linux-aarch64')
-  conflicts=('linux-aarch64-rc-chromebook')
-  install=${pkgname}.install
+_package-api-headers() {
+  pkgdesc='Kernel headers sanitized for use in userspace'
+  conflicts=('linux-api-headers')
+  provides=('linux-api-headers=${pkgver}')
 
   cd ${_srcname}
+  make INSTALL_HDR_PATH="$pkgdir/usr" headers_install
 
-  mkdir -p "${pkgdir}/boot"
-  cp ../kernel.its .
-
-  mkimage -D "-I dts -O dtb -p 2048" -f kernel.its vmlinux.uimg
-  dd if=/dev/zero of=bootloader.bin bs=512 count=1
-  echo "console=tty0 console=ttyS2,115200n8 earlyprintk=ttyS2,115200n8 init=/sbin/init root=PARTUUID=%U/PARTNROFF=1 rootwait rw noinitrd" > cmdline
-  vbutil_kernel \
-    --pack vmlinux.kpart \
-    --version 1 \
-    --vmlinuz vmlinux.uimg \
-    --arch aarch64 \
-    --keyblock ../kernel.keyblock \
-    --signprivate ../kernel_data_key.vbprivk \
-    --config cmdline \
-    --bootloader bootloader.bin
-
-  cp vmlinux.kpart "${pkgdir}/boot"
+  # use headers from libdrm
+  rm -r "$pkgdir/usr/include/drm"
 }
 
-pkgname=("${pkgbase}" "${pkgbase}-headers" "${pkgbase}-chromebook")
+pkgname=("${pkgbase}" "${pkgbase}-headers" "${pkgbase}-api-headers")
 for _p in ${pkgname[@]}; do
   eval "package_${_p}() {
     _package${_p#${pkgbase}}
